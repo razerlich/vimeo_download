@@ -1,0 +1,9 @@
+# One Vimeo video per line. You can paste either the full player URL
+#   https://player.vimeo.com/video/1234567890
+# or just the video id
+#   1234567890
+# Lines starting with # and blank lines are ignored.
+
+1234567890
+1234567890
+1234567890

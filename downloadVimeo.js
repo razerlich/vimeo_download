@@ -1,9 +1,48 @@
 import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
+import readline from "readline";
 import cliProgress from "cli-progress";
 import axios from "axios";
 import { load } from "cheerio";
+
+// Remembers a "replace all" / "skip all" choice so we don't re-ask every file.
+let overwriteAll = null; // null = ask, true = always replace, false = always skip
+
+// Ask the user a question on the terminal and resolve with their lowercased answer.
+function askUser(question) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim().toLowerCase());
+    });
+  });
+}
+
+// Returns true if we should write to targetFile, false if it should be skipped.
+async function confirmOverwrite(targetFile, pre) {
+  if (!fs.existsSync(targetFile)) return true;
+  if (overwriteAll === true) return true;
+  if (overwriteAll === false) return false;
+
+  const answer = await askUser(
+    `${pre || ""}"${targetFile}" already exists. [r]eplace / [s]kip / [ra] replace all / [sa] skip all? `
+  );
+  if (answer === "ra") {
+    overwriteAll = true;
+    return true;
+  }
+  if (answer === "sa") {
+    overwriteAll = false;
+    return false;
+  }
+  // Default to skipping unless they explicitly chose to replace.
+  return answer === "r" || answer === "replace" || answer === "y" || answer === "yes";
+}
 
 async function downloadHLSStream(
   m3u8Url,
@@ -105,7 +144,7 @@ async function extractVimeoPlayerConfig(url, domain) {
       headers: {
         Accept: "*/*",
         Referer: domain,
-        "User-Agent": "Thunder Client (https://www.thunderclient.com)",
+        "User-Agent": "Vimeo Downloader",
       },
     });
     if (!response) throw new Error("No response");
@@ -199,16 +238,28 @@ async function downloadVimeoPrivateVideo(
     }
     const stream = playerConfig.streamUrls.hls.primary;
 
-    // Optional: Remove existing file if it exists
+    // Default the output file to the video's title when one isn't provided.
+    const targetFile =
+      outputFilename ||
+      `${sanitizeFilename(playerConfig.title) || playerConfig.videoId}.mp4`;
+
+    // If the file already exists, ask whether to replace it or skip.
+    const shouldDownload = await confirmOverwrite(targetFile, pre);
+    if (!shouldDownload) {
+      console.log((pre || "") + `Skipping "${targetFile}" (kept existing file).`);
+      return;
+    }
+
+    // Remove existing file before re-downloading.
     try {
-      fs.rmSync(outputFilename || `${playerConfig.videoId}.mp4`);
+      fs.rmSync(targetFile);
     } catch {}
 
     await new Promise((resolve) => {
       downloadHLSStream(
         stream,
-        outputFilename || `${playerConfig.videoId}.mp4`,
-        duration || 600,
+        targetFile,
+        duration || playerConfig.duration || 600,
         resolve,
         pre
       );
@@ -224,6 +275,15 @@ async function downloadVimeoPrivateVideo(
 export {
   downloadVimeoPrivateVideo,
 };
+
+function sanitizeFilename(name) {
+  if (!name) return "";
+  return name
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "") // strip characters illegal on Windows
+    .replace(/\s+/g, " ") // collapse whitespace
+    .trim()
+    .replace(/[. ]+$/, ""); // Windows disallows trailing dots/spaces
+}
 
 function convertToSeconds(timeStr) {
   // Split the time string into components (hours, minutes, seconds.milliseconds)
