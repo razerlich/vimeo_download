@@ -1,13 +1,13 @@
 
 # 🎬 Vimeo Private Video Downloader using Node.js 🚀
 
-Welcome to the **Vimeo Private Video Downloader**! This project uses Node.js, axios, cheerio, and FFmpeg to download private Vimeo videos. Think of this repo as your treasure map to video-saving glory! 🏴‍☠️💾
+Welcome to the **Vimeo Private Video Downloader**! This project uses Node.js, axios, cheerio, and FFmpeg to download private Vimeo videos — one at a time or in bulk. Think of this repo as your treasure map to video-saving glory! 🏴‍☠️💾
 
 ## 🛠️ Requirements
 
 Before you start, make sure you have the following installed:
 
-- **Node.js** (v14 or later) - [Download Node.js](https://nodejs.org/)
+- **Node.js** (v16 or later) - [Download Node.js](https://nodejs.org/)
 - **FFmpeg** - A powerful tool for video and audio processing.
 
 ### How to Check if FFmpeg is Installed:
@@ -42,92 +42,106 @@ Once installed, run `ffmpeg -version` again to verify everything’s working. �
 
 ## ⚙️ Setup the Project
 
-Follow these steps to set up the project folder and install dependencies:
-
-1. Create a new project directory:
+1. Clone (or download) this repository and move into it:
 
 ```bash
-mkdir vimeo-downloader
+git clone <repo-url> vimeo-downloader
 cd vimeo-downloader
 ```
 
-2. Initialize the Node.js project:
+2. Install the dependencies:
 
 ```bash
-npm init -y
+npm install
 ```
 
-3. Install the required dependencies:
-
-```bash
-npm install axios cheerio cli-progress
-```
-
-These tools will be your map, compass, and flashlight for navigating Vimeo's hidden treasures. 🌌
-
----
-
-## 🧙‍♂️ The Magic Script: `downloadVimeo.js`
-
-This script will download private Vimeo videos by using a combination of axios (for HTTP requests), cheerio (for HTML parsing), and FFmpeg (for downloading the video stream).
-
-### Code Breakdown:
-
-#### 1. **Extract Vimeo Player Configuration** 🎥
-
-We use `axios` to fetch the HTML page of the Vimeo video and `cheerio` to parse it. The function `extractVimeoPlayerConfig` grabs the important player configuration, including stream URLs and video details like title and duration.
-
-```javascript
-const response = await axios.get(url, {
-  headers: { 
-    "User-Agent": "Vimeo Downloader" 
-  }
-});
-```
-
-#### 2. **Downloading the Video Stream** ⬇️
-
-Once we have the player configuration, the `downloadHLSStream` function uses **FFmpeg** to download the video stream. It tracks the download progress and updates it using the `cli-progress` library.
-
-```javascript
-const ffmpegArgs = [
-  "-i", m3u8Url, 
-  "-c", "copy", 
-  "-bsf:a", "aac_adtstoasc", 
-  outputFilename,
-];
-```
-
-#### 3. **Main Downloader Function** 🎯
-
-The `downloadVimeoPrivateVideo` function orchestrates the whole process. It extracts the video stream URL, invokes the download process, and saves the video as an MP4 file.
-
-```javascript
-await downloadHLSStream(stream, outputFilename);
-```
+That's it — all required packages (axios, cheerio, cli-progress, …) are listed in `package.json`. 🌌
 
 ---
 
 ## 🏃‍♂️ Running the Script
 
-To start downloading your Vimeo private video, follow these steps:
+The entry point is `index.js`. You don't need to edit any source files — just pass the video URL or id on the command line.
 
-1. Open `downloadVimeo.js` and replace the placeholder URL with the Vimeo video URL you want to download.
-2. Run the script using the command:
+### Download a single video
 
 ```bash
-node downloadVimeo.js
+node index.js <vimeoUrlOrId> [outputFile] [refererDomain] [durationSeconds]
 ```
+
+- `vimeoUrlOrId` — a full player URL (`https://player.vimeo.com/video/1234567890`) or just the numeric id (`1234567890`).
+- `outputFile` *(optional)* — where to save the `.mp4`. If omitted, the file is auto-named after the video's title.
+- `refererDomain` *(optional)* — the referer to send with the request. Defaults to `https://player.vimeo.com/`.
+- `durationSeconds` *(optional)* — used to estimate download progress. Defaults to the video's reported duration.
+
+Examples:
+
+```bash
+node index.js 1234567890
+node index.js https://player.vimeo.com/video/1234567890 my-video.mp4
+```
+
+### Download many videos at once (batch mode)
+
+You can grab a whole list in one run, either from a file or straight from the command line.
+
+**Option A — `links.txt`:** Put one URL or id per line in `links.txt`, then run with no arguments:
+
+```bash
+node index.js
+```
+
+```text
+# links.txt — one Vimeo video per line.
+# Full player URL or just the id. Blank lines and # comments are ignored.
+1234567890
+https://player.vimeo.com/video/1234567890
+```
+
+**Option B — pass several directly:**
+
+```bash
+node index.js 1234567890 1234567890 https://player.vimeo.com/video/123
+```
+
+In batch mode each file is auto-named after the video's title, and `outputFile`/`duration` are ignored. Progress is prefixed with `[n/total]` so you can track the queue.
+
+> 💡 You can also run `npm start` instead of `node index.js`.
+
+### If a file already exists
+
+When the target file already exists, the script asks what to do:
+
+```
+[r]eplace / [s]kip / [ra] replace all / [sa] skip all
+```
+
+Choose `ra` / `sa` to apply your answer to every remaining file in a batch without being asked again.
+
+---
+
+## 🧙‍♂️ How It Works
+
+- **`index.js`** — the CLI: parses arguments, reads `links.txt`, normalizes ids into player URLs, and runs single or batch downloads.
+- **`downloadVimeo.js`** — the engine:
+  - `extractVimeoPlayerConfig` uses **axios** to fetch the player page and **cheerio** to parse out `window.playerConfig`, giving us the video title, duration, and HLS/DASH stream URLs.
+  - `downloadHLSStream` spawns **FFmpeg** to pull the HLS stream and remux it into an `.mp4`, with a live **cli-progress** bar.
+  - `downloadVimeoPrivateVideo` ties it together: it retries on transient security errors, auto-names the output from the title, and handles the overwrite prompt.
 
 ---
 
 ## 🛠️ Troubleshooting
 
-If you're facing issues with FFmpeg or downloads, here are some things to check:
+- **FFmpeg Not Found?** Make sure FFmpeg is installed and added to your system's PATH (`ffmpeg -version`).
+- **Video Not Downloading?** Check the URL/id and ensure the video is accessible. The script retries automatically on Vimeo security errors.
+- **Permission Issues?** Run the terminal as an administrator (Windows) or use `sudo` on Linux/MacOS.
 
-- **FFmpeg Not Found?** Make sure FFmpeg is installed and added to your system's PATH.
-- **Video Not Downloading?** Check the video URL and ensure the video is accessible.
-- **Permission Issues?** Run the script as an administrator or use `sudo` on Linux/MacOS.
+---
+
+## 👥 Credits
+
+- **Original author:** Sam Shubham — wrote the original downloader.
+- **Modifications by:** Raz Erlich — forked the project and added CLI arguments, batch downloading (`links.txt` / multiple args), title-based auto-naming, and the overwrite prompt.
 
 ---
 
